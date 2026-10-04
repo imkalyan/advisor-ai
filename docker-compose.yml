@@ -1,0 +1,173 @@
+services:
+  #local_llm:
+    #build:
+      #context: ./llm-service
+     # dockerfile: Dockerfile
+    #container_name: advisor_local_llm
+    #ports:
+     # - "11434:11434"   
+    #restart: unless-stopped
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: advisor_postgres
+    env_file:
+      - advisor.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: advisor_qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrantdata:/qdrant/storage
+
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    container_name: advisor_zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: advisor_kafka
+    depends_on:
+      - zookeeper
+    env_file:
+      - advisor.env
+    environment:
+      KAFKA_ENABLE_KRAFT: "no"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_BROKER_ID: 1
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports:
+      - "29092:29092"
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      echo 'Waiting for Kafka...';
+      sleep 10;
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 \
+        --replication-factor 1 --partitions 3 --topic news_events;
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 \
+        --replication-factor 1 --partitions 3 --topic sentiment_signals;
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 \
+        --replication-factor 1 --partitions 3 --topic news_sentiment;
+      kafka-topics --create --if-not-exists --bootstrap-server kafka:9092 \
+        --replication-factor 1 --partitions 3 --topic advisor_signals;
+      echo 'Topics created';
+    container_name: advisor_kafka_init
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms128M"
+  minio:
+    image: minio/minio:latest
+    container_name: advisor_minio
+    env_file:
+      - advisor.env
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  sentiment:
+    build: ./sentiment-service
+    container_name: advisor_sentiment
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    depends_on:
+      - qdrant
+      - kafka
+      - kafka-init
+
+  advisor:
+    build: ./advisor-service
+    container_name: advisor_service
+    ports:
+      - "8080:8080"
+    env_file:
+      - /Users/pawankalyan/Projects/advisor-ai/advisor.env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/advisor_db
+      SPRING_DATASOURCE_USERNAME: advisor
+      SPRING_DATASOURCE_PASSWORD: advisorpass
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      qdrant:
+        condition: service_started
+  advisor-ui:
+    build:
+      context: ./advisor-frontend
+      dockerfile: Dockerfile
+    container_name: advisor_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - advisor
+  
+  news_producer:
+      build: ./news-producer
+      container_name: advisor_news_producer
+      depends_on:
+        - kafka
+        - kafka-init
+      volumes:
+        - ./news-producer/state:/app/state
+      environment:
+        - KAFKA_BROKER=kafka:9092
+  
+  sentiment_aggregator:
+    build: ./sentiment-aggregator
+    container_name: advisor_sentiment_aggregator
+    depends_on:
+      - kafka
+  advisor_signals_producer:
+    build: ./advisor-signals-producer
+    container_name: advisor_signals_producer
+    env_file:
+      - ../.env
+    environment:
+      KAFKA_BROKER: kafka:9092
+      SENTIMENT_TOPIC: sentiment_signals
+      ADVISOR_TOPIC: advisor_signals
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-latest}
+      TYPESAFE_API_URL: ${TYPESAFE_API_URL:-https://api.typesafe.ai/v1/systemone}
+    depends_on:
+      - kafka
+  kafka-tools:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka_tools
+    depends_on:
+      - kafka
+    entrypoint: ["sleep", "infinity"]
+networks:
+    advisor-network:
+      driver: bridge
+volumes:
+  pgdata:
+  qdrantdata:
+  miniodata:

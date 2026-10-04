@@ -1,0 +1,5 @@
+symbol,quantity,avgCost,type
+TCS,50,150,STOCK
+Reliance,10,600,STOCK
+BTC,0.5,30000,CRYPTO
+Nippon,20,210,ETF

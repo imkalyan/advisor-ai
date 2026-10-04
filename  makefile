@@ -1,0 +1,8 @@
+consume-news:
+	docker exec -it kafka_tools kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic news_sentiment --from-beginning
+
+consume-signals:
+	docker exec -it kafka_tools kafka-console-consumer.sh --bootstrap-server kafka:9092 --topic sentiment_signals --from-beginning
+
+produce-test:
+	docker exec -i kafka_tools kafka-console-producer.sh --bootstrap-server kafka:9092 --topic test_topic

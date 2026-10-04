@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+transformers
+numpy
+kafka-python
+torch
+pandas
+sentencepiece

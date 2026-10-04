@@ -1,0 +1,5 @@
+symbol,quantity,avgCost,type
+AAPL,50,150,STOCK
+TSLA,10,600,STOCK
+BTC,0.5,30000,CRYPTO
+VTI,20,210,ETF
