@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import requests
+from bs4 import BeautifulSoup
 from kafka import KafkaConsumer, KafkaProducer
 import time
 
@@ -15,6 +16,7 @@ TYPESAFE_API_URL = os.getenv("TYPESAFE_API_URL", "https://api.typesafe.ai/v1/sys
 TYPESAFE_MODEL = os.getenv("TYPESAFE_MODEL", "jev-latest")
 TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
 MAX_TOP_ARTICLES = 3
+MAX_ARTICLE_CHARS = 6000
 
 while True:
     try:
@@ -130,10 +132,35 @@ def compact_articles(articles, limit=MAX_TOP_ARTICLES):
                 "sentiment": article.get("sentiment"),
                 "probabilities": article.get("probabilities"),
                 "score": article.get("score"),
+                "article_text": article.get("article_text", ""),
             })
         else:
             compacted.append({"link": str(article)})
     return compacted
+
+
+def enrich_directional_articles(articles):
+    """Fetch bounded article text only for a directional candidate."""
+    enriched = []
+    for article in (articles or [])[:MAX_TOP_ARTICLES]:
+        item = dict(article) if isinstance(article, dict) else {"link": str(article)}
+        link = item.get("link")
+        if link and not item.get("article_text"):
+            try:
+                response = requests.get(
+                    link,
+                    headers={"User-Agent": "Advisor-AI research reader/1.0"},
+                    timeout=8,
+                )
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, "html.parser")
+                for node in soup(["script", "style", "noscript"]):
+                    node.decompose()
+                item["article_text"] = " ".join(soup.get_text(" ").split())[:MAX_ARTICLE_CHARS]
+            except requests.RequestException as error:
+                logging.warning("Could not fetch article evidence %s: %s", link, error)
+        enriched.append(item)
+    return enriched
 
 
 def advisor_reason(action, probabilities, articles, source, error=None):
@@ -156,7 +183,10 @@ def advisor_reason(action, probabilities, articles, source, error=None):
 
 
 def decide_with_typesafe(symbol_data, fallback_action):
-    articles = compact_articles(symbol_data.get("top_articles", []))
+    source_articles = symbol_data.get("top_articles", [])
+    if fallback_action in {"BUY", "SELL"}:
+        source_articles = enrich_directional_articles(source_articles)
+    articles = compact_articles(source_articles)
     probabilities = symbol_data.get("aggregated_probabilities", {})
     state = {
         "symbol": symbol_data.get("symbol"),
@@ -248,9 +278,14 @@ def process_sentiment_messages():
             reason = advisor_reason(
                 final_action,
                 action_probabilities,
-                top_articles,
+                (typesafe or {}).get("request", {}).get("state", {}).get("latest_news_evidence", top_articles),
                 decision_source,
                 error=typesafe.get("error") if typesafe else None,
+            )
+            evidence_articles = (
+                (typesafe or {}).get("request", {})
+                .get("state", {})
+                .get("latest_news_evidence", top_articles)
             )
 
             advisor_signal = {
@@ -269,7 +304,7 @@ def process_sentiment_messages():
                 "decision_model": typesafe.get("model") if typesafe else None,
                 "decision_confidence": typesafe.get("confidence") if typesafe else None,
                 "decision_usage": typesafe.get("usage") if typesafe else {},
-                "top_articles": top_articles
+                "top_articles": evidence_articles
             }
 
             producer.send(ADVISOR_TOPIC, advisor_signal)

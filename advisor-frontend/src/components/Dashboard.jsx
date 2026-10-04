@@ -177,6 +177,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [actionFilter, setActionFilter] = useState("ALL");
 
   useEffect(() => {
     fetchSignals().then((data) => {
@@ -206,7 +207,8 @@ export default function Dashboard() {
   }));
 
   const filtered = symbols.filter((s) =>
-    s.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+    s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) &&
+    (actionFilter === "ALL" || s.latest.action === actionFilter)
   );
 
   const paginated = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -225,6 +227,26 @@ export default function Dashboard() {
           value={searchQuery}
           onChange={handleSearchChange}
         />
+      </Box>
+
+      <Box mb={2} display="flex" gap={1} flexWrap="wrap">
+        {["ALL", "BUY", "SELL", "HOLD"].map((action) => (
+          <button
+            key={action}
+            type="button"
+            onClick={() => { setActionFilter(action); setPage(0); }}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 18,
+              border: "1px solid #bbb",
+              background: actionFilter === action ? "#1976d2" : "white",
+              color: actionFilter === action ? "white" : "#333",
+              cursor: "pointer",
+            }}
+          >
+            {action}
+          </button>
+        ))}
       </Box>
 
       <Paper>

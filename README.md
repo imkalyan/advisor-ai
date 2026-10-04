@@ -19,6 +19,8 @@ RSS/news feeds → news_events (Kafka) → FinBERT sentiment
 
 The response is validated before publication. It must contain probabilities for all three choices, probabilities summing approximately to one, a finite confidence value, and a selected action matching the highest probability. The resulting signal retains the action, probabilities, confidence, model, source, explanation, sentiment metrics, and supporting articles.
 
+For directional candidates, where the deterministic sentiment fallback is already `BUY` or `SELL`, the producer selectively fetches the linked article before the TypeSafe call. It removes scripts and styles and sends at most 6,000 characters per article, alongside the title, summary, URL, date, and sentiment. `HOLD` candidates do not incur this extra fetch. Article text is treated as untrusted evidence and cannot change the permitted action set.
+
 ## Fallback behavior
 
 If TypeSafe is unavailable or returns an invalid response, the producer uses a deterministic fallback:
@@ -51,6 +53,8 @@ Open:
 - Dashboard: http://localhost:3000
 - Advisor API: http://localhost:8080/api/advisor/ping
 - Signals: http://localhost:8080/api/advisor/signals
+
+The dashboard provides a symbol search and one-click `ALL`, `BUY`, `SELL`, and `HOLD` filters. The action, confidence, source, reason, and probability chart are shown for each ticker; expanding a row shows its history.
 
 Useful commands:
 
