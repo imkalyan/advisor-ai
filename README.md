@@ -54,7 +54,7 @@ Open:
 - Advisor API: http://localhost:8080/api/advisor/ping
 - Signals: http://localhost:8080/api/advisor/signals
 
-The dashboard provides a symbol search and one-click `ALL`, `BUY`, `SELL`, and `HOLD` filters. The action, confidence, source, reason, and probability chart are shown for each ticker; expanding a row shows its history.
+The dashboard provides a symbol search, one-click `ALL`, `BUY`, `SELL`, and `HOLD` filters, and recency windows for all time, 1 hour, 6 hours, 24 hours, and 7 days. Recency is calculated from each ticker's latest signal timestamp. The action, confidence, source, reason, and probability chart are shown for each ticker; expanding a row shows its history.
 
 Useful commands:
 

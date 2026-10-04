@@ -178,6 +178,7 @@ export default function Dashboard() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [actionFilter, setActionFilter] = useState("ALL");
+  const [recencyFilter, setRecencyFilter] = useState("ALL");
 
   useEffect(() => {
     fetchSignals().then((data) => {
@@ -206,10 +207,15 @@ export default function Dashboard() {
     history: rows,
   }));
 
-  const filtered = symbols.filter((s) =>
-    s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) &&
-    (actionFilter === "ALL" || s.latest.action === actionFilter)
-  );
+  const recencyHours = { "1H": 1, "6H": 6, "24H": 24, "7D": 24 * 7 };
+  const filtered = symbols.filter((s) => {
+    const ageHours = (Date.now() - new Date(s.latest.lastUpdated).getTime()) / 3600000;
+    const withinRecency = recencyFilter === "ALL" ||
+      (Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= recencyHours[recencyFilter]);
+    return s.symbol.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      (actionFilter === "ALL" || s.latest.action === actionFilter) &&
+      withinRecency;
+  });
 
   const paginated = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -245,6 +251,27 @@ export default function Dashboard() {
             }}
           >
             {action}
+          </button>
+        ))}
+      </Box>
+
+      <Box mb={2} display="flex" gap={1} flexWrap="wrap" alignItems="center">
+        <Typography variant="body2">Signal recency:</Typography>
+        {["ALL", "1H", "6H", "24H", "7D"].map((window) => (
+          <button
+            key={window}
+            type="button"
+            onClick={() => { setRecencyFilter(window); setPage(0); }}
+            style={{
+              padding: "6px 12px",
+              borderRadius: 16,
+              border: "1px solid #bbb",
+              background: recencyFilter === window ? "#455a64" : "white",
+              color: recencyFilter === window ? "white" : "#333",
+              cursor: "pointer",
+            }}
+          >
+            {window === "ALL" ? "All time" : window}
           </button>
         ))}
       </Box>
